@@ -1,0 +1,11 @@
+feature,psi,status
+temp,4.268240609162998,significant shift
+pressure,0.3865043464126351,significant shift
+origin_hourly_departures,0.05689129764834235,stable
+wind_speed,0.02125022939026942,stable
+humid,0.020891483731897295,stable
+visib,0.009098638622699783,stable
+distance,0.003919824723329233,stable
+day_of_week,0.003765628626920401,stable
+sched_dep_hour,0.001751155006730578,stable
+precip,0.0,stable
