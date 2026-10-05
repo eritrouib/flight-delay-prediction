@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Where the delay model gets it wrong | NYC departures, Nov–Dec 2013</title>
+<title>New York flight delays: predicted vs actual, by route</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✈️</text></svg>">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -123,8 +123,8 @@
 <body>
 <aside id="panel">
   <button id="toggle" aria-expanded="true" aria-controls="panel">Hide</button>
-  <h1>Where the delay model gets it wrong</h1>
-  <p class="lede">Every route out of New York's three airports in the test period (November–December 2013), coloured by how far the model's predicted delay rate was from what actually happened.</p>
+  <h1>New York flight delays: predicted vs actual, by route</h1>
+  <p class="lede">A machine learning model predicts whether a flight leaving New York will depart at least 15 minutes late, using the airline, destination, time of day and weather. This map compares its predictions with what actually happened on every route in November–December 2013, so you can see where the model can be trusted and where it underestimates delays.</p>
   <dl class="facts" id="facts"></dl>
 
   <h2>Departing from</h2>
@@ -182,8 +182,8 @@
   // ---- Measures: each has a value function, class breaks, colours and plain-English labels
   const MEASURES = {
     gap: {
-      label: "Model error",
-      note: "Predicted minus actual delay rate. Magenta routes are riskier than the model thinks.",
+      label: "Predicted vs actual",
+      note: "Predicted delay rate minus the actual delay rate, in percentage points. Magenta routes had more delays than the model expected.",
       value: r => r.pred - r.actual,
       fmt: pts,
       breaks: [-0.06, -0.02, 0.02, 0.06],
