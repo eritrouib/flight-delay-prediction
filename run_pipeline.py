@@ -80,6 +80,7 @@ def main() -> None:
     seg_origin.to_csv(OUT / "segment_origin.csv", index=False)
     seg_carrier.to_csv(OUT / "segment_carrier.csv", index=False)
     drift.to_csv(OUT / "drift_psi.csv", index=False)
+    evaluate.route_summary(test, p_test).to_csv(OUT / "route_summary.csv", index=False)
     importance.to_csv(OUT / "shap_importance.csv", index=False)
 
     report.write_model_card(

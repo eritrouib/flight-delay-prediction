@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Where the delay model gets it wrong | NYC departures, Nov–Dec 2013</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✈️</text></svg>">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Semi+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  /* Palette borrowed from aeronautical charts: chart paper, navy ink, chart magenta
+     (risk: the model under-predicts delays) and chart cyan (the model over-predicts). */
+  :root {
+    --paper: #E8EDEB;
+    --panel: #F7F9F8;
+    --ink: #172338;
+    --muted: #55626F;
+    --rule: #C3CDD0;
+    --magenta: #9E1F72;
+    --cyan: #1C7394;
+    --neutral: #B8C1C6;
+    --focus: #E0A400;
+    --sans: "Barlow", "Segoe UI", system-ui, -apple-system, sans-serif;
+    --cond: "Barlow Semi Condensed", "Arial Narrow", "Segoe UI", sans-serif;
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  *, *::before, *::after { box-sizing: inherit; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font-family: var(--sans); font-size: 15px; line-height: 1.45;
+    color: var(--ink); background: var(--paper);
+    display: grid; grid-template-columns: 360px 1fr; height: 100%;
+  }
+  #map { height: 100%; background: var(--paper); }
+  .leaflet-container { font-family: var(--sans); }
+
+  aside {
+    background: var(--panel); border-right: 1px solid var(--rule);
+    overflow-y: auto; padding: 22px 22px 28px; z-index: 500;
+  }
+  h1 {
+    font-family: var(--cond); font-weight: 700; font-size: 28px; line-height: 1.08;
+    letter-spacing: -0.01em; margin: 0 0 8px;
+  }
+  .lede { color: var(--muted); margin: 0 0 16px; max-width: 34em; }
+  .facts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 0 0 20px; }
+  .facts div { border-left: 3px solid var(--ink); padding: 2px 0 2px 8px; }
+  .facts dt { font-size: 12px; color: var(--muted); line-height: 1.25; }
+  .facts dd { margin: 0; font-family: var(--cond); font-weight: 600; font-size: 20px; }
+
+  h2 { font-family: var(--cond); font-weight: 600; font-size: 17px; margin: 20px 0 8px; }
+  .seg { display: flex; flex-wrap: wrap; gap: 4px; }
+  .seg button {
+    font: 500 14px var(--sans); color: var(--ink); background: transparent;
+    border: 1px solid var(--rule); border-radius: 3px; padding: 5px 10px; cursor: pointer;
+  }
+  .seg button[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: #fff; }
+  .seg button:hover:not([aria-pressed="true"]) { border-color: var(--ink); }
+  button:focus-visible, li button:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+  .measure-note { font-size: 13px; color: var(--muted); margin: 8px 0 0; }
+
+  .legend { list-style: none; margin: 10px 0 0; padding: 0; font-size: 13px; }
+  .legend li { display: flex; align-items: center; gap: 8px; margin: 3px 0; }
+  .swatch { width: 26px; height: 6px; border-radius: 3px; flex: none; }
+  .swatch.thin { height: 2px; background: repeating-linear-gradient(90deg, var(--neutral) 0 4px, transparent 4px 7px); }
+
+  .rank { list-style: none; margin: 0; padding: 0; counter-reset: r; }
+  .rank li { counter-increment: r; border-bottom: 1px solid var(--rule); }
+  .rank button {
+    all: unset; box-sizing: border-box; width: 100%; display: grid;
+    grid-template-columns: 22px 1fr auto; gap: 6px; padding: 6px 2px; cursor: pointer; font-size: 14px;
+  }
+  .rank button::before { content: counter(r); color: var(--muted); font-family: var(--cond); }
+  .rank button:hover .rn { text-decoration: underline; }
+  .rank .rv { font-family: var(--cond); font-weight: 600; }
+  .rank .sub { color: var(--muted); }
+
+  #detail { margin-top: 20px; padding: 14px; background: #fff; border: 1px solid var(--rule); border-left: 4px solid var(--ink); }
+  #detail[hidden] { display: none; }
+  #detail h3 { font-family: var(--cond); font-weight: 700; font-size: 20px; margin: 0; }
+  #detail .where { color: var(--muted); font-size: 13px; margin: 0 0 10px; }
+  #detail table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  #detail th, #detail td { text-align: right; padding: 3px 4px; border-bottom: 1px solid var(--rule); }
+  #detail th:first-child, #detail td:first-child { text-align: left; }
+  #detail th { font-weight: 600; color: var(--muted); }
+  #detail .verdict { margin: 10px 0 0; font-size: 14px; }
+  .close { float: right; font: 500 13px var(--sans); background: none; border: 0; color: var(--muted); cursor: pointer; padding: 2px 4px; }
+
+  details { margin-top: 22px; font-size: 13px; color: var(--muted); }
+  summary { cursor: pointer; font-family: var(--cond); font-weight: 600; font-size: 16px; color: var(--ink); }
+  details ul { padding-left: 18px; margin: 8px 0; }
+  .foot { font-size: 12px; color: var(--muted); margin-top: 18px; }
+  .foot a, details a { color: var(--cyan); }
+
+  .tip { font: 13px var(--sans); }
+  .tip b { font-family: var(--cond); font-size: 15px; }
+  .leaflet-tooltip.tip { border-radius: 3px; border-color: var(--rule); box-shadow: none; }
+
+  #toggle { display: none; }
+  #error { position: absolute; inset: 20px; z-index: 1000; background: #fff; border: 2px solid var(--magenta); padding: 16px; display: none; }
+
+  @media (max-width: 760px) {
+    body { grid-template-columns: 1fr; grid-template-rows: 1fr auto; }
+    #map { grid-row: 1; }
+    aside {
+      grid-row: 2; max-height: 52vh; border-right: 0; border-top: 1px solid var(--rule);
+      padding: 14px 16px 20px;
+    }
+    aside.collapsed { max-height: 108px; overflow: hidden; }
+    h1 { font-size: 23px; padding-right: 70px; }
+    #toggle {
+      display: block; position: absolute; right: 14px; margin-top: -2px;
+      font: 600 13px var(--sans); background: var(--ink); color: #fff; border: 0; border-radius: 3px; padding: 6px 10px;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<aside id="panel">
+  <button id="toggle" aria-expanded="true" aria-controls="panel">Hide</button>
+  <h1>Where the delay model gets it wrong</h1>
+  <p class="lede">Every route out of New York's three airports in the test period (November–December 2013), coloured by how far the model's predicted delay rate was from what actually happened.</p>
+  <dl class="facts" id="facts"></dl>
+
+  <h2>Departing from</h2>
+  <div class="seg" id="origins" role="group" aria-label="Origin airport"></div>
+
+  <h2>Colour routes by</h2>
+  <div class="seg" id="measures" role="group" aria-label="Measure"></div>
+  <p class="measure-note" id="measure-note"></p>
+  <ul class="legend" id="legend"></ul>
+
+  <h2 id="rank-title">Ranking</h2>
+  <div class="seg" id="rank-dir" role="group" aria-label="Ranking direction"></div>
+  <ol class="rank" id="rank"></ol>
+
+  <section id="detail" hidden aria-live="polite"></section>
+
+  <details>
+    <summary>What this map does not show</summary>
+    <ul>
+      <li>Routes with fewer than <span id="minf"></span> test flights are drawn as thin dashed lines and left out of rankings: rates on a handful of flights are noise.</li>
+      <li>Accuracy (AUC) is only calculated for routes with 300+ flights.</li>
+      <li>Delay is measured at departure from New York. Nothing here says the destination airport caused it.</li>
+      <li>The model uses observed weather, which a live system would only have as a forecast.</li>
+      <li>This is 2013 New York data; it says nothing about Heathrow or any other airport.</li>
+    </ul>
+    Full limitations are in the <a href="https://github.com/eritrouib/flight-delay-prediction/blob/main/MODEL_CARD.md">model card</a>.
+  </details>
+  <p class="foot" id="foot"></p>
+</aside>
+<div id="map" role="region" aria-label="Map of routes from New York"></div>
+<div id="error"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="data.js"></script>
+<script>
+(function () {
+  "use strict";
+  const D = window.MAP_DATA;
+  const err = document.getElementById("error");
+  if (!D || !window.L) {
+    err.style.display = "block";
+    err.textContent = !D
+      ? "Map data not found. Run python build_webmap.py to create docs/data.js, and keep it in the same folder as this page."
+      : "The map library did not load. Check your internet connection and reload.";
+    return;
+  }
+
+  const css = getComputedStyle(document.documentElement);
+  const C = n => css.getPropertyValue(n).trim();
+  const MAGENTA = C("--magenta"), CYAN = C("--cyan"), NEUTRAL = C("--neutral"), INK = C("--ink");
+  const pct = v => (v * 100).toFixed(1) + "%";
+  const pts = v => (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v * 100).toFixed(1) + " pts";
+  const MIN = D.min_flights;
+
+  // ---- Measures: each has a value function, class breaks, colours and plain-English labels
+  const MEASURES = {
+    gap: {
+      label: "Model error",
+      note: "Predicted minus actual delay rate. Magenta routes are riskier than the model thinks.",
+      value: r => r.pred - r.actual,
+      fmt: pts,
+      breaks: [-0.06, -0.02, 0.02, 0.06],
+      colours: [MAGENTA, "#CC7AAE", NEUTRAL, "#79B3C9", CYAN],
+      classes: ["Under-predicted by 6+ pts", "Under by 2–6 pts", "Within 2 pts", "Over by 2–6 pts", "Over-predicted by 6+ pts"],
+      rank: ["Most under-predicted", "Most over-predicted"], asc: true
+    },
+    actual: {
+      label: "Delay rate",
+      note: "Share of flights departing 15+ minutes late in the test period.",
+      value: r => r.actual,
+      fmt: pct,
+      breaks: [0.15, 0.20, 0.25, 0.30],
+      colours: ["#E9C9DD", "#D79BC1", "#C06A9F", "#A93F80", "#7E1159"],
+      classes: ["Under 15%", "15–20%", "20–25%", "25–30%", "30% or more"],
+      rank: ["Most delayed", "Least delayed"], asc: false
+    },
+    auc: {
+      label: "Accuracy (AUC)",
+      note: "How well the model separates delayed from on-time flights on each route. 0.5 is a coin toss.",
+      value: r => r.auc,
+      fmt: v => v.toFixed(3),
+      breaks: [0.65, 0.70, 0.75],
+      colours: ["#D7E7EE", "#9CC6D7", "#4E97B4", "#155C78"],
+      classes: ["Under 0.65", "0.65–0.70", "0.70–0.75", "0.75 or more"],
+      rank: ["Least accurate", "Most accurate"], asc: true
+    },
+    n: {
+      label: "Flights",
+      note: "Number of departures in the test period.",
+      value: r => r.n,
+      fmt: v => v.toLocaleString("en-GB"),
+      breaks: [150, 400, 800],
+      colours: ["#C9D1DA", "#8E9BAD", "#4F5F78", INK],
+      classes: ["Under 150", "150–400", "400–800", "800 or more"],
+      rank: ["Busiest", "Quietest"], asc: false
+    }
+  };
+
+  const state = { origin: "ALL", measure: "gap", dir: 0, selected: null };
+
+  // ---- Aggregate routes to one row per destination for the current origin filter
+  function rowsFor(origin) {
+    const routes = D.routes.filter(r => origin === "ALL" || r.o === origin);
+    const by = {};
+    routes.forEach(r => {
+      const a = by[r.d] || (by[r.d] = { d: r.d, n: 0, sa: 0, sp: 0, aucW: 0, aucN: 0, routes: [] });
+      a.n += r.n; a.sa += r.actual * r.n; a.sp += r.pred * r.n; a.routes.push(r);
+      if (r.auc != null) { a.aucW += r.auc * r.n; a.aucN += r.n; }
+    });
+    return Object.values(by).map(a => ({
+      d: a.d, n: a.n, actual: a.sa / a.n, pred: a.sp / a.n,
+      auc: a.aucN ? a.aucW / a.aucN : null, routes: a.routes
+    }));
+  }
+
+  function colourFor(m, v) {
+    if (v == null) return NEUTRAL;
+    let i = 0;
+    while (i < m.breaks.length && v >= m.breaks[i]) i++;
+    return m.colours[i];
+  }
+
+  // ---- Map
+  const map = L.map("map", { zoomSnap: 0.25, preferCanvas: true, attributionControl: true });
+  L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}", {
+    maxZoom: 16, attribution: "Basemap © Esri, HERE, Garmin, © OpenStreetMap contributors"
+  }).addTo(map);
+  const HOME = [[17.5, -123], [49.5, -64]];
+  map.fitBounds(HOME);
+  const Home = L.Control.extend({
+    options: { position: "topleft" },
+    onAdd() {
+      const b = L.DomUtil.create("button", "leaflet-bar");
+      b.type = "button"; b.title = "Show all routes"; b.setAttribute("aria-label", "Show all routes");
+      b.textContent = "⌂";
+      Object.assign(b.style, { width: "34px", height: "34px", background: "#fff", cursor: "pointer", fontSize: "18px" });
+      L.DomEvent.on(b, "click", e => { L.DomEvent.stop(e); map.fitBounds(HOME); });
+      return b;
+    }
+  });
+  new Home().addTo(map);
+
+  const layer = L.layerGroup().addTo(map);
+  const ap = code => D.airports[code];
+  const ll = code => [ap(code).lat, ap(code).lon];
+
+  // Curved arc between two points (quadratic Bézier with a perpendicular offset)
+  function arc(a, b) {
+    const [y1, x1] = a, [y2, x2] = b;
+    const mx = (x1 + x2) / 2, my = (y1 + y2) / 2, dx = x2 - x1, dy = y2 - y1;
+    const k = 0.18, cx = mx - dy * k, cy = my + dx * k;
+    const pts = [];
+    for (let t = 0; t <= 1.0001; t += 0.05) {
+      const u = 1 - t;
+      pts.push([u * u * y1 + 2 * u * t * cy + t * t * y2, u * u * x1 + 2 * u * t * cx + t * t * x2]);
+    }
+    return pts;
+  }
+
+  function tipHtml(row, m) {
+    const v = m.value(row);
+    const val = row.n < MIN ? "too few flights to colour" : v == null ? "not enough flights for AUC" : m.fmt(v);
+    return `<b>${row.d}</b> ${ap(row.d).name}<br>${m.label}: ${val}<br>${row.n.toLocaleString("en-GB")} flights`;
+  }
+
+  function draw() {
+    layer.clearLayers();
+    const m = MEASURES[state.measure];
+    const rows = rowsFor(state.origin);
+    const maxN = Math.max(...rows.map(r => r.n));
+    const maxRoute = Math.max(...D.routes.map(r => r.n));
+
+    // Routes: thin dashed if too few flights; otherwise coloured by the route's own value
+    const routes = D.routes.filter(r => state.origin === "ALL" || r.o === state.origin)
+      .sort((a, b) => a.n - b.n);
+    routes.forEach(r => {
+      const small = r.n < MIN;
+      const v = small ? null : m.value(r);
+      L.polyline(arc(ll(r.o), ll(r.d)), {
+        color: small ? NEUTRAL : colourFor(m, v),
+        weight: small ? 1 : 1.2 + 4 * Math.sqrt(r.n / maxRoute),
+        opacity: small ? 0.7 : 0.85,
+        dashArray: small ? "3 4" : null,
+        interactive: false
+      }).addTo(layer);
+    });
+
+    rows.forEach(row => {
+      const small = row.n < MIN;
+      const c = small ? NEUTRAL : colourFor(m, m.value(row));
+      const sel = state.selected === row.d;
+      L.circleMarker(ll(row.d), {
+        radius: 3.5 + 8 * Math.sqrt(row.n / maxN),
+        color: sel ? INK : "#fff", weight: sel ? 3 : 1.2,
+        fillColor: c, fillOpacity: 0.95
+      }).bindTooltip(tipHtml(row, m), { className: "tip", direction: "top", offset: [0, -4] })
+        .on("click", () => select(row.d))
+        .addTo(layer);
+    });
+
+    ["JFK", "LGA", "EWR"].forEach(o => {
+      if (state.origin !== "ALL" && state.origin !== o) return;
+      L.circleMarker(ll(o), { radius: 5, color: "#fff", weight: 2, fillColor: INK, fillOpacity: 1 })
+        .bindTooltip(`<b>${o}</b> ${ap(o).name}`, { className: "tip", direction: "top" })
+        .addTo(layer);
+    });
+
+    drawLegend(m);
+    drawRank(m, rows);
+    if (state.selected) drawDetail(state.selected);
+  }
+
+  function drawLegend(m) {
+    document.getElementById("measure-note").textContent = m.note;
+    const ul = document.getElementById("legend");
+    ul.innerHTML = m.colours.map((c, i) =>
+      `<li><span class="swatch" style="background:${c}"></span>${m.classes[i]}</li>`).join("") +
+      `<li><span class="swatch thin"></span>Fewer than ${MIN} flights${state.measure === "auc" ? ", or under 300 for AUC" : ""}</li>`;
+  }
+
+  function drawRank(m, rows) {
+    const dirs = document.getElementById("rank-dir");
+    dirs.innerHTML = m.rank.map((t, i) =>
+      `<button type="button" aria-pressed="${state.dir === i}" data-i="${i}">${t}</button>`).join("");
+    dirs.querySelectorAll("button").forEach(b => b.onclick = () => { state.dir = +b.dataset.i; draw(); });
+
+    const eligible = rows.filter(r => r.n >= MIN && m.value(r) != null);
+    const ascFirst = m.asc ? state.dir === 0 : state.dir === 1;
+    eligible.sort((a, b) => ascFirst ? m.value(a) - m.value(b) : m.value(b) - m.value(a));
+    document.getElementById("rank").innerHTML = eligible.slice(0, 5).map(r =>
+      `<li><button type="button" data-d="${r.d}"><span><span class="rn">${ap(r.d).name}</span> <span class="sub">${r.d}</span></span><span class="rv">${m.fmt(m.value(r))}</span></button></li>`
+    ).join("") || `<li class="sub">No routes with enough flights for this measure.</li>`;
+    document.querySelectorAll("#rank button").forEach(b => b.onclick = () => select(b.dataset.d, true));
+  }
+
+  function verdict(row) {
+    if (row.n < MIN) return `Only ${row.n} flights in the test period, too few to judge the model here.`;
+    const g = row.pred - row.actual;
+    if (Math.abs(g) < 0.02) return "The model's average prediction is within 2 points of reality on this route.";
+    return g < 0
+      ? `The model under-predicts delays here by ${Math.abs(g * 100).toFixed(1)} points. Planning on its figures would understate the risk.`
+      : `The model over-predicts delays here by ${(g * 100).toFixed(1)} points, so it would raise more false alarms than needed.`;
+  }
+
+  function drawDetail(code) {
+    const row = rowsFor(state.origin).find(r => r.d === code);
+    const box = document.getElementById("detail");
+    if (!row) { box.hidden = true; return; }
+    const cell = (r, f) => r.n < MIN ? "–" : f;
+    box.innerHTML = `
+      <button class="close" type="button" aria-label="Close details">Close</button>
+      <h3>${ap(code).name}</h3>
+      <p class="where">${code}, ${row.n.toLocaleString("en-GB")} test flights${state.origin === "ALL" ? " from all three airports" : " from " + state.origin}</p>
+      <table>
+        <thead><tr><th>From</th><th>Flights</th><th>Actual</th><th>Predicted</th><th>AUC</th></tr></thead>
+        <tbody>${row.routes.sort((a, b) => b.n - a.n).map(r => `
+          <tr><td>${r.o}</td><td>${r.n.toLocaleString("en-GB")}</td>
+          <td>${cell(r, pct(r.actual))}</td><td>${cell(r, pct(r.pred))}</td>
+          <td>${r.auc != null ? r.auc.toFixed(3) : "–"}</td></tr>`).join("")}
+        </tbody>
+      </table>
+      <p class="verdict">${verdict(row)}</p>`;
+    box.hidden = false;
+    box.querySelector(".close").onclick = () => { state.selected = null; box.hidden = true; draw(); };
+  }
+
+  function select(code, fly) {
+    state.selected = code;
+    draw();
+    if (fly) map.flyTo(ll(code), Math.max(map.getZoom(), 5), { duration: matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 0.8 });
+    document.getElementById("detail").scrollIntoView({ block: "nearest" });
+  }
+
+  // ---- Controls
+  function segment(id, items, key, after) {
+    const el = document.getElementById(id);
+    el.innerHTML = items.map(([v, t]) =>
+      `<button type="button" aria-pressed="${state[key] === v}" data-v="${v}">${t}</button>`).join("");
+    el.querySelectorAll("button").forEach(b => b.onclick = () => {
+      state[key] = b.dataset.v;
+      el.querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x === b));
+      if (after) after();
+      draw();
+    });
+  }
+  segment("origins", [["ALL", "All three"], ["JFK", "JFK"], ["LGA", "LaGuardia"], ["EWR", "Newark"]], "origin");
+  segment("measures", Object.entries(MEASURES).map(([k, m]) => [k, m.label]), "measure", () => { state.dir = 0; });
+
+  const h = D.headline;
+  document.getElementById("facts").innerHTML = `
+    <div><dt>Test flights</dt><dd>${h.n_flights.toLocaleString("en-GB")}</dd></div>
+    <div><dt>Delayed 15+ min</dt><dd>${pct(h.delay_rate)}</dd></div>
+    <div><dt>AUC (baseline ${h.baseline_auc.toFixed(2)})</dt><dd>${h.auc.toFixed(3)}</dd></div>`;
+  document.getElementById("minf").textContent = MIN;
+  document.getElementById("foot").innerHTML =
+    `Data: <a href="https://github.com/tidyverse/nycflights13">nycflights13</a> (US Bureau of Transportation Statistics). Model and map by Eriola Trungu Impersimi. Built ${D.generated}.`;
+
+  const panel = document.getElementById("panel"), tog = document.getElementById("toggle");
+  tog.onclick = () => {
+    const c = panel.classList.toggle("collapsed");
+    tog.textContent = c ? "Show" : "Hide";
+    tog.setAttribute("aria-expanded", String(!c));
+    setTimeout(() => map.invalidateSize(), 50);
+  };
+
+  draw();
+})();
+</script>
+</body>
+</html>

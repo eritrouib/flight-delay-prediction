@@ -94,3 +94,24 @@ def plot_calibration(y_true, probs: dict, path) -> None:
     fig.tight_layout()
     fig.savefig(path, dpi=150)
     plt.close(fig)
+
+
+def route_summary(df: pd.DataFrame, y_prob, min_n_auc: int = 300) -> pd.DataFrame:
+    """Per-route (origin -> destination) test performance, used by the web map.
+
+    AUC is only reported where a route has enough flights and both outcomes,
+    because AUC on a handful of flights is noise rather than evidence.
+    """
+    tmp = df[["origin", "dest", "delayed"]].assign(prob=y_prob)
+    rows = []
+    for (o, d), g in tmp.groupby(["origin", "dest"]):
+        enough = len(g) >= min_n_auc and g["delayed"].nunique() == 2
+        rows.append({
+            "origin": o, "dest": d, "n_flights": len(g),
+            "actual_delay_rate": g["delayed"].mean(),
+            "mean_predicted": g["prob"].mean(),
+            "roc_auc": roc_auc_score(g["delayed"], g["prob"]) if enough else None,
+        })
+    out = pd.DataFrame(rows)
+    out["calibration_gap"] = out["mean_predicted"] - out["actual_delay_rate"]
+    return out

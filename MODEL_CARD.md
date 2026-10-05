@@ -1,6 +1,6 @@
 # Model Card: Flight Departure Delay Classifier
 
-*Generated automatically by `run_pipeline.py` on 03 October 2026. Do not edit by hand; re-run the pipeline.*
+*Generated automatically by `run_pipeline.py` on 04 October 2026. Do not edit by hand; re-run the pipeline.*
 
 ## Model details
 - **Task:** binary classification. Will a flight depart 15+ minutes late?

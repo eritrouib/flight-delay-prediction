@@ -17,10 +17,17 @@ Delay risk drives many airport decisions: stand allocation, staffing, gate chang
 
 The model ranks delay risk better than the baseline (+0.05 AUC, +23% PR AUC) and is well calibrated across most of the probability range. That is a modest lift, which is expected: the dataset has no inbound-aircraft (reactionary) delay, the largest real-world driver. Full details are in the **[model card](MODEL_CARD.md)**.
 
+## Interactive route map
+
+**[Open the map](https://eritrouib.github.io/flight-delay-prediction/)**: every route from New York in the test period, coloured by where the model under- or over-predicts delays, with switchable measures (model error, delay rate, AUC, flights), an airport filter, rankings and route-level detail. Routes with too few flights to judge are shown but deliberately left uncoloured.
+
+It runs from a single HTML page with no server: `build_webmap.py` turns the pipeline outputs into `docs/data.js`, and GitHub Pages serves the `docs/` folder.
+
 ## What the responsible-ML checks found
 - **Drift would already trigger a review.** Temperature has a PSI of 4.3 between training (Jan-Sep) and test (Nov-Dec), because the model is applying summer-learned weather patterns to winter. A monthly PSI monitor would catch this before performance degraded silently.
 - **Performance is uneven across carriers.** The model under-predicts Southwest (WN) delays by about 8 percentage points, so that carrier's delay risk would be systematically understated in any resourcing decision built on it.
 - **Explanations are operationally plausible.** SHAP shows scheduled hour as the strongest driver (delays build through the day), followed by carrier and humidity/pressure (weather systems).
+- **The route map links the two findings.** Several of the most under-predicted routes (Houston Hobby, Milwaukee, Houston Intercontinental) are flown mainly by Southwest and United, the two carriers the segment review flags as under-predicted. Some of the largest gaps are on routes with only 50-120 test flights, so they need more data before anyone acts on them.
 - **No leakage.** Only information available before departure is used, enforced by a data quality check and a unit test.
 
 | Calibration | What drives predictions (SHAP) |
@@ -40,12 +47,15 @@ The model ranks delay risk better than the baseline (+0.05 AUC, +23% PR AUC) and
 ```bash
 pip install -r requirements.txt
 python run_pipeline.py   # ~1 minute; writes outputs/ and MODEL_CARD.md
+python build_webmap.py   # writes docs/data.js for the route map
 pytest                   # unit tests on synthetic data
 ```
 
 ## Project structure
 ```
 run_pipeline.py            End-to-end pipeline
+build_webmap.py            Builds the route map data from pipeline outputs
+docs/                      Interactive route map (Leaflet), served by GitHub Pages
 src/flightdelay/
   config.py                Thresholds, time split and feature list in one place
   data.py                  Loading, feature engineering, time-based split
